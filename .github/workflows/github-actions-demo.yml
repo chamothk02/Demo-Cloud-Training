@@ -1,4 +1,4 @@
-name: CI/CD Deploy to EC2
+name: Deploy to EC2
 
 on:
   push:
@@ -6,55 +6,35 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-    # === CI Phase ===
-    - name: ⬇️ Checkout Source Code
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: ⚙️ Setup Node.js
-      uses: actions/setup-node@v3
-      with:
-        node-version: 'lts/*'
-
-    - name: 📦 Install Dependencies (for validation)
-      run: npm install
-
-    - name: ✅ Run Tests (optional)
-      run: |
-        echo "No tests configured" 
-        # You can add something like: npm test
-
-    # === CD Phase ===
-    - name: 🔐 Setup SSH for EC2
+    - name: Setup SSH
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-    - name: 🚀 Deploy to EC2 Server
+    - name: Deploy over SSH
       run: |
         ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
           export NVM_DIR="$HOME/.nvm"
-          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # load nvm
           [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
-          echo "📁 Changing directory to project"
           cd ${{ secrets.EC2_PATH }}
 
-          echo "📥 Pulling latest changes from Git"
           git pull origin main
 
-          echo "⚙️ Ensuring Node.js & PM2"
+          # Ensure Node.js and PM2 are available
           command -v node >/dev/null 2>&1 || nvm install --lts
           command -v pm2 >/dev/null 2>&1 || npm install -g pm2
 
-          echo "📦 Installing dependencies"
           npm install
-
-          echo "🔁 Restarting App with PM2"
-          pm2 reload index || pm2 start index
+          pm2 reload index
         EOF
